@@ -4,9 +4,9 @@ python implementation of a qt model that combines momentum and mean reversion to
 
 - `src/data_cleaning.py` downloads the full tesla price history and cleans it up
 - `src/ode_model.py` is the ode model on its own. it checks our rk4 solver against the exact answer (momentum switched off), then runs a stable and an unstable case and works out the jacobian and eigenvalues
-- `src/backtest.py` is the actual test on tesla. it fits kappa and beta on 2011-2021, predicts 2022 to oct 2026, and simulates trading with fees for 20, 60 and 120 day averages
+- `src/backtest.py` is the actual test on tesla. it fits kappa and beta on 2010-2021, predicts 2022 to oct 2026, and simulates trading for 20, 60 and 120 day averages with fees of 0%, 0.01%, 0.1%, 0.2% and 0.25% per trade
 - `src/bootstrap.py` checks whether the small forecast improvement is real or just noise
-- `data/tsla_daily_2011_2026.csv` is the yahoo finance snapshot (adjusted prices) we used for the results in our presentation
+- `data/tesla_prices_clean.csv` is the yahoo finance download (adjusted prices) the backtest uses
 
 ## the model
 

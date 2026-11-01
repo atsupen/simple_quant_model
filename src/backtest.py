@@ -13,7 +13,7 @@ os.makedirs("results", exist_ok=True)
 TREND_SENSITIVITY: Final[float] = 100.0 # (gamma)
 TREND_NEW_RETURN_WEIGHT: Final[float] = 0.1   # (rho)
 GMA_WINDOWS: Final[list[int]] = [20, 60, 120]  # (gma)
-FEE_RATES: Final[list[float]] = [0.0, 0.001, 0.0025]  # fee on every buy or sell (proportion)
+FEE_RATES: Final[list[float]] = [0.0, 0.0001, 0.001, 0.002, 0.0025]  # fee on every buy or sell (proportion)
 TRAIN_END_DATE: Final[str] = "2021-12-31"
 TEST_START_DATE: Final[str] = "2022-01-01"
 TEST_END_DATE: Final[str] = "2026-10-27"
@@ -131,7 +131,7 @@ assert prices.index.is_unique, "duplicate dates in the price file"
 all_trading_results: list[dict[str, float | str]] = []
 
 for window in GMA_WINDOWS:
-    features = create_features(tesla_prices, window)
+    features = create_features(prices, window)  # needs the date index, not the row numbers
     features = features.dropna(
         subset = ["reversion_feature", "momentum_feature", "next_day_log_return", "next_day_date"]
     )
@@ -176,7 +176,7 @@ for window in GMA_WINDOWS:
         )
         forecasts_for_bootstrap.to_csv("results/test_forecasts_60.csv", float_format="%.17g")
 
-    open_prices: FloatArray = tesla_prices.open.loc[test_rows.next_day_date].to_numpy()
+    open_prices: FloatArray = prices.open.loc[test_rows.next_day_date].to_numpy()
     strategies: dict[str, FloatArray] = {
         "combined": predictions["combined"],
         "momentum only": predictions["momentum only"],
@@ -198,9 +198,10 @@ for window in GMA_WINDOWS:
                 {"window": window, "fee": fee_rate, "strategy": strategy_name, **trading_stats}
             )
 
-            if window == 60 and fee_rate == 0.001 and strategy_name in ("combined", "buy and hold"):
+            # save the 60 day wealth paths at every fee so we can plot them
+            if window == 60 and strategy_name in ("combined", "buy and hold"):
                 pd.Series(
                     wealth_path, index=test_rows.next_day_date.to_numpy(), name="wealth"
-                ).to_csv(f"results/wealth_{strategy_name.replace(' ', '_')}_60.csv")
+                ).to_csv(f"results/wealth_{strategy_name.replace(' ', '_')}_60_fee_{fee_rate:g}.csv")
 
 pd.DataFrame(all_trading_results).to_csv("results/trading_results.csv", index=False)
