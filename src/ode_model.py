@@ -1,8 +1,12 @@
 # ode model for momentum vs mean reversion
-# x = gap between log price and log average (x = p - v), m = remembered trend (per day)
-#   dx/dt = -kappa*x + beta*tanh(gamma*m)
-#   dm/dt = alpha*(dx/dt - m)
-# we hold the average v fixed here so the gap x is the only thing that moves
+# price_gap = gap between log price and log average (x = p - v)
+# trend_memory = remembered trend, per day (m)
+#   d(price_gap)/dt   = -mean_reversion_rate * price_gap + momentum_strength * tanh(trend_sensitivity * trend_memory)
+#   d(trend_memory)/dt = memory_rate * (d(price_gap)/dt - trend_memory)
+# we hold the average v fixed here so the gap is the only thing that moves
+#
+# (symbols used on the slides: kappa = mean_reversion_rate, alpha = memory_rate,
+#  beta = momentum_strength, gamma = trend_sensitivity)
 #
 # this script does three things
 #   1. checks our rk4 solver against the exact answer when momentum is off (beta = 0)
@@ -11,108 +15,171 @@
 # run from the repo folder with: python src/ode_model.py
 
 import os
+from typing import TypedDict
+
 import numpy as np
+import numpy.typing as npt
 import matplotlib.pyplot as plt
 from scipy.integrate import solve_ivp
+
+FloatArray = npt.NDArray[np.float64]
 
 os.makedirs("results", exist_ok=True)
 
 
-def derivative(state, kappa, alpha, beta, gamma):
-    x, m = state
-    dx = -kappa * x + beta * np.tanh(gamma * m)
-    dm = alpha * (dx - m)
-    return np.array([dx, dm])
+class ModelParameters(TypedDict):
+    mean_reversion_rate: float
+    memory_rate: float    
+    momentum_strength: float
+    trend_sensitivity: float
 
 
-def rk4(state0, t_end, h, params):
-    # classic 4th order runge kutta with a fixed step h (in days)
-    n_steps = int(round(t_end / h))
-    t = np.arange(n_steps + 1) * h
-    y = np.zeros((n_steps + 1, 2))
-    y[0] = state0
+def compute_derivative(
+    state: FloatArray,
+    mean_reversion_rate: float,
+    memory_rate: float,
+    momentum_strength: float,
+    trend_sensitivity: float,
+) -> FloatArray:
+    price_gap, trend_memory = state
+    price_gap_rate = (
+        -mean_reversion_rate * price_gap
+        + momentum_strength * np.tanh(trend_sensitivity * trend_memory)
+    )
+    trend_memory_rate = memory_rate * (price_gap_rate - trend_memory)
+    return np.array([price_gap_rate, trend_memory_rate])
+
+
+def integrate_rk4(
+    initial_state: list[float],
+    end_time: float,
+    step_size: float,
+    params: ModelParameters,
+) -> tuple[FloatArray, FloatArray]:
+
+    n_steps = int(round(end_time / step_size))
+    times = np.arange(n_steps + 1) * step_size
+    states = np.zeros((n_steps + 1, 2))
+    states[0] = initial_state
     for i in range(n_steps):
-        k1 = derivative(y[i], **params)
-        k2 = derivative(y[i] + h * k1 / 2, **params)
-        k3 = derivative(y[i] + h * k2 / 2, **params)
-        k4 = derivative(y[i] + h * k3, **params)
-        y[i + 1] = y[i] + h * (k1 + 2 * k2 + 2 * k3 + k4) / 6
-    return t, y
+        k1 = compute_derivative(states[i], **params)
+        k2 = compute_derivative(states[i] + step_size * k1 / 2, **params)
+        k3 = compute_derivative(states[i] + step_size * k2 / 2, **params)
+        k4 = compute_derivative(states[i] + step_size * k3, **params)
+        states[i + 1] = states[i] + step_size * (k1 + 2 * k2 + 2 * k3 + k4) / 6
+    return times, states
 
 
-def exact_solution(t, x0, m0, kappa, alpha):
-    # with beta = 0 the x equation is just dx/dt = -kappa*x so x = x0*exp(-kappa*t)
-    # then dm/dt = alpha*(-kappa*x - m) is linear so we solved it by hand (integrating factor)
-    x = x0 * np.exp(-kappa * t)
-    m = m0 * np.exp(-alpha * t) - alpha * kappa * x0 / (alpha - kappa) * (np.exp(-kappa * t) - np.exp(-alpha * t))
-    return np.column_stack([x, m])
+def exact_solution_without_momentum(
+    times: FloatArray,
+    initial_gap: float,
+    initial_trend_memory: float,
+    mean_reversion_rate: float,
+    memory_rate: float,
+) -> FloatArray:
+
+    gap = initial_gap * np.exp(-mean_reversion_rate * times)
+    trend_memory = (
+        initial_trend_memory * np.exp(-memory_rate * times)
+        - memory_rate * mean_reversion_rate * initial_gap / (memory_rate - mean_reversion_rate)
+        * (np.exp(-mean_reversion_rate * times) - np.exp(-memory_rate * times))
+    )
+    return np.column_stack([gap, trend_memory])
 
 
-# same numbers as the slides
-kappa = 0.05   # pull back strength, per day
-alpha = 0.1    # how fast the trend memory reacts, per day
-gamma = 100.0  # sensitivity to the trend, days
+MEAN_REVERSION_RATE: float = 0.05
+MEMORY_RATE: float = 0.1
+TREND_SENSITIVITY: float = 100.0
 
 
-# ---------- 1. check rk4 against the exact answer ----------
-print("rk4 check with momentum switched off (beta = 0)")
-print("step (days)   max error in x   order")
-params = dict(kappa=kappa, alpha=alpha, beta=0.0, gamma=gamma)
-previous_error = None
-for h in [1.0, 0.5, 0.25, 0.125]:
-    t, y = rk4([0.1, 0.0], 100.0, h, params)
-    exact = exact_solution(t, 0.1, 0.0, kappa, alpha)
-    error = np.max(np.abs(y[:, 0] - exact[:, 0]))
-    # halving the step should make the error about 2^4 = 16 times smaller
-    order = np.log2(previous_error / error) if previous_error else float("nan")
-    print(f"{h:<13} {error:<16.3e} {order:.2f}")
-    previous_error = error
-    if h == 1.0:
-        t_one_day, y_one_day, exact_one_day = t, y, exact
+no_momentum_params: ModelParameters = {
+    "mean_reversion_rate": MEAN_REVERSION_RATE,
+    "memory_rate": MEMORY_RATE,
+    "momentum_strength": 0.0,
+    "trend_sensitivity": TREND_SENSITIVITY,
+}
+previous_max_error: float | None = None
+for step_size in [1.0, 0.5, 0.25, 0.125]:
+    times, rk4_states = integrate_rk4([0.1, 0.0], 100.0, step_size, no_momentum_params)
+    exact_states = exact_solution_without_momentum(
+        times, 0.1, 0.0, MEAN_REVERSION_RATE, MEMORY_RATE
+    )
+    max_gap_error = float(np.max(np.abs(rk4_states[:, 0] - exact_states[:, 0])))
+    # halving the step should make the error about 16 times smaller
+    convergence_order = (
+        float(np.log2(previous_max_error / max_gap_error))
+        if previous_max_error is not None
+        else float("nan")
+    )
+    print(f"{step_size:<13} {max_gap_error:<18.3e} {convergence_order:.2f}")
+    previous_max_error = max_gap_error
+    if step_size == 1.0:
+        one_day_times, one_day_states, one_day_exact_states = times, rk4_states, exact_states
 
 
-# ---------- 2. stable vs unstable ----------
-print()
-cases = {"stable": 0.01, "unstable": 0.02}
-runs = {}
-for name, beta in cases.items():
-    params = dict(kappa=kappa, alpha=alpha, beta=beta, gamma=gamma)
-    t, y = rk4([0.01, 0.0], 300.0, 0.125, params)
-    runs[name] = (t, y)
+momentum_strength_by_case: dict[str, float] = {"stable": 0.01, "unstable": 0.02}
+trajectories: dict[str, tuple[FloatArray, FloatArray]] = {}
+for case_name, momentum_strength in momentum_strength_by_case.items():
+    case_params: ModelParameters = {
+        "mean_reversion_rate": MEAN_REVERSION_RATE,
+        "memory_rate": MEMORY_RATE,
+        "momentum_strength": momentum_strength,
+        "trend_sensitivity": TREND_SENSITIVITY,
+    }
+    times, states = integrate_rk4([0.01, 0.0], 300.0, 0.125, case_params)
+    trajectories[case_name] = (times, states)
 
-    # compare against scipy's solver as a second check
-    ref = solve_ivp(lambda time, s: derivative(s, **params), (0, 300), [0.01, 0.0],
-                    method="DOP853", t_eval=t, rtol=1e-11, atol=[1e-13, 1e-15])
-    diff = np.max(np.abs(y[:, 0] - ref.y[0]))
+    # compare against scipy's solver
+    scipy_reference = solve_ivp(
+        lambda _time, state: compute_derivative(state, **case_params),
+        (0, 300),
+        [0.01, 0.0],
+        method = "DOP853",
+        t_eval = times,
+        rtol = 1e-11,
+        atol = [1e-13, 1e-15],
+    )
+    max_diff_from_scipy = float(np.max(np.abs(states[:, 0] - scipy_reference.y[0])))
 
-    # linearise around (x, m) = (0, 0) using tanh(gamma*m) ~ gamma*m
-    jacobian = np.array([[-kappa, beta * gamma],
-                         [-alpha * kappa, alpha * (beta * gamma - 1)]])
-    eigenvalues = np.linalg.eigvals(jacobian)
+    linearised_jacobian = np.array([
+        [-MEAN_REVERSION_RATE, momentum_strength * TREND_SENSITIVITY],
+        [
+            -MEMORY_RATE * MEAN_REVERSION_RATE,
+            MEMORY_RATE * (momentum_strength * TREND_SENSITIVITY - 1),
+        ],
+    ])
+    eigenvalues = np.linalg.eigvals(linearised_jacobian)
 
-    # stable when beta*gamma < 1 + kappa/alpha, i.e. b < 1 + k
-    big_b = beta * gamma
-    big_k = kappa / alpha
-    print(f"{name}: beta = {beta}, b = {big_b:g}, k = {big_k:g}, stable if b < {1 + big_k:g}")
-    print(f"  trace = {np.trace(jacobian):.4f}, det = {np.linalg.det(jacobian):.4f}")
+    momentum_gain = momentum_strength * TREND_SENSITIVITY
+    rate_ratio = MEAN_REVERSION_RATE / MEMORY_RATE
+    print(
+        f"\n{case_name}: beta = {momentum_strength}, b = {momentum_gain:g}, "
+        f"k = {rate_ratio:g}, stable if b < {1 + rate_ratio:g}"
+    )
+    print(
+        f"  trace = {np.trace(linearised_jacobian):.4f}, "
+        f"det = {np.linalg.det(linearised_jacobian):.4f}"
+    )
     print(f"  eigenvalues = {eigenvalues[0]:.4f} and {eigenvalues[1]:.4f}")
-    print(f"  biggest |x| in the last 100 days = {np.max(np.abs(y[t >= 200, 0])):.3e}")
-    print(f"  max difference from scipy dop853 = {diff:.1e}")
+    print(f"  biggest |gap| in the last 100 days = {np.max(np.abs(states[times >= 200, 0])):.3e}")
+    print(f"  max difference from scipy dop853 = {max_diff_from_scipy:.1e}")
 
 
-# ---------- plots ----------
-fig, axes = plt.subplots(1, 2, figsize=(10, 3.5))
-axes[0].plot(t_one_day, exact_one_day[:, 0], "k-", label="exact")
-axes[0].plot(t_one_day[::10], y_one_day[::10, 0], "ko", mfc="white", label="rk4, h = 1 day")
+figure, axes = plt.subplots(1, 2, figsize=(10, 3.5))
+axes[0].plot(one_day_times, one_day_exact_states[:, 0], "k-", label="exact")
+axes[0].plot(
+    one_day_times[::10], one_day_states[::10, 0], "ko", mfc="white", label="rk4, h = 1 day"
+)
 axes[0].set_xlabel("time (days)")
 axes[0].set_ylabel("gap x (momentum off)")
 axes[0].legend()
-for name, (t, y) in runs.items():
-    axes[1].plot(t, y[:, 0], label=f"{name}, beta = {cases[name]}")
+for case_name, (times, states) in trajectories.items():
+    axes[1].plot(
+        times, states[:, 0], label=f"{case_name}, beta = {momentum_strength_by_case[case_name]}"
+    )
 axes[1].set_xlabel("time (days)")
 axes[1].set_ylabel("gap x")
 axes[1].legend()
-fig.tight_layout()
-fig.savefig("results/ode_model.png", dpi=150)
-print()
-print("saved results/ode_model.png")
+
+figure.tight_layout()
+figure.savefig("results/ode_model.png", dpi=150)
