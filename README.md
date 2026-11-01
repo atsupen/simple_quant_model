@@ -1,4 +1,4 @@
-Python implementation of a simple quantitative trading model that combines momentum and mean reversion to predict changes in Tesla's share price, using daily data from 2010-2026.
+python implementation of a qt model that combines momentum and mean reversion to predict changes in tesla's share price, data range from 2010-2026
 
 ## what's in here
 
@@ -29,3 +29,7 @@ python src/bootstrap.py
 ```
 
 run them from the repo folder. results go into `results/`
+
+teng 🧧🧧🧧🧧
+
+[best song ever](https://open.spotify.com/track/5LYJ631w9ps5h9tdvac7yP?si=46a7c55fbe6f447a)
