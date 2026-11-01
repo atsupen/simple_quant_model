@@ -1,19 +1,3 @@
-# ode model for momentum vs mean reversion
-# price_gap = gap between log price and log average (x = p - v)
-# trend_memory = remembered trend, per day (m)
-#   d(price_gap)/dt   = -mean_reversion_rate * price_gap + momentum_strength * tanh(trend_sensitivity * trend_memory)
-#   d(trend_memory)/dt = memory_rate * (d(price_gap)/dt - trend_memory)
-# we hold the average v fixed here so the gap is the only thing that moves
-#
-# (symbols used on the slides: kappa = mean_reversion_rate, alpha = memory_rate,
-#  beta = momentum_strength, gamma = trend_sensitivity)
-#
-# this script does three things
-#   1. checks our rk4 solver against the exact answer when momentum is off (beta = 0)
-#   2. runs a stable case (beta = 0.01) and an unstable case (beta = 0.02)
-#   3. works out the jacobian and eigenvalues for both
-# run from the repo folder with: python src/ode_model.py
-
 import os
 from typing import TypedDict
 

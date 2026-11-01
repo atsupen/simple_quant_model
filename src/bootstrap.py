@@ -1,9 +1,3 @@
-# is the tiny forecast improvement real or just noise?
-# we compare the daily squared error of our model against just guessing zero,
-# then resample the test period in blocks of 20 days (moving block bootstrap)
-# so we keep some of the day to day dependence.
-# run src/backtest.py first, then: python src/bootstrap.py
-
 import numpy as np
 import pandas as pd
 

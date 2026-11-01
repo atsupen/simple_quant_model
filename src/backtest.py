@@ -1,15 +1,3 @@
-# tesla backtest for the momentum + mean reversion model
-#
-# each day t (after the close) we predict tomorrow's log return with
-#   predicted = -kappa * ln(close / gma) + beta * tanh(gamma * trend)
-# where gma is the geometric moving average of the last n closes and
-# trend is a fading memory of daily log returns (90% old, 10% new)
-#
-# kappa and beta are fitted on 2011-2021 with nonnegative least squares,
-# then we test on 2022 to oct 2026 without changing anything.
-# trading rule: if predicted > 0 hold shares from the next open, otherwise hold cash,
-# and pay a fee on every buy and sell.
-
 import os
 from typing import Final # ensures variables cannot reassigned
 
