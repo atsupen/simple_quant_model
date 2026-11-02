@@ -8,7 +8,7 @@ from scipy.optimize import nnls
 
 FloatArray = npt.NDArray[np.float64]
 
-os.makedirs("results", exist_ok=True)
+os.makedirs("results", exist_ok = True)
 
 TREND_SENSITIVITY: Final[float] = 100.0 # (gamma)
 TREND_NEW_RETURN_WEIGHT: Final[float] = 0.1   # (rho)
@@ -24,13 +24,14 @@ DATE_COLUMN: Final[str] = "date"
 
 
 def create_features(prices: pd.DataFrame, window: int) -> pd.DataFrame:
-    features = pd.DataFrame(index=prices.index)
+    features = pd.DataFrame(index = prices.index)
     features["close"] = prices.close
     features["open"] = prices.open
     log_close = np.log(prices.close)
     features["log_return"] = log_close.diff()
     features["gma"] = np.exp(log_close.rolling(window, min_periods=window).mean())
     trend = np.zeros(len(features))
+
     for i in range(1, len(features)):
         trend[i] = (
             (1 - TREND_NEW_RETURN_WEIGHT) * trend[i - 1]
@@ -41,6 +42,7 @@ def create_features(prices: pd.DataFrame, window: int) -> pd.DataFrame:
     features["momentum_feature"] = np.tanh(TREND_SENSITIVITY * features.trend)
     features["next_day_log_return"] = features.log_return.shift(-1)
     features["next_day_date"] = pd.Series(features.index, index=features.index).shift(-1)
+
     return features
 
 
@@ -125,7 +127,7 @@ print(tesla_prices.describe())
 prices = tesla_prices.set_index(DATE_COLUMN).sort_index()
 prices.index.name = "date"
     
-assert isinstance(prices.index, pd.DatetimeIndex), "date index must be datetime64"
+assert isinstance(prices.index, pd.DatetimeIndex), "date index must be datetime64" # catches errors
 assert prices.index.is_unique, "duplicate dates in the price file"
 
 all_trading_results: list[dict[str, float | str]] = []

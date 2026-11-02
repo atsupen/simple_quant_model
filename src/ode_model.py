@@ -10,12 +10,12 @@ FloatArray = npt.NDArray[np.float64]
 
 os.makedirs("results", exist_ok=True)
 
-
+# These are the variables seen in the presentation, only with more descriptive names
 class ModelParameters(TypedDict):
-    mean_reversion_rate: float
-    memory_rate: float    
-    momentum_strength: float
-    trend_sensitivity: float
+    mean_reversion_rate: float      # kappa
+    memory_rate: float              # m'
+    momentum_strength: float        # beta
+    trend_sensitivity: float        # gamma
 
 
 def compute_derivative(
@@ -31,6 +31,7 @@ def compute_derivative(
         + momentum_strength * np.tanh(trend_sensitivity * trend_memory)
     )
     trend_memory_rate = memory_rate * (price_gap_rate - trend_memory)
+
     return np.array([price_gap_rate, trend_memory_rate])
 
 
@@ -51,6 +52,7 @@ def integrate_rk4(
         k3 = compute_derivative(states[i] + step_size * k2 / 2, **params)
         k4 = compute_derivative(states[i] + step_size * k3, **params)
         states[i + 1] = states[i] + step_size * (k1 + 2 * k2 + 2 * k3 + k4) / 6
+        
     return times, states
 
 
