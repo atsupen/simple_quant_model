@@ -22,5 +22,5 @@ for j in range(reps):
 low, high = np.quantile(means, [0.025, 0.975])
 print(f"Sample Size: {n}")
 print(f"Mean difference in squared error: {differences.mean():.3e}")
-print(f"MSE reduction vs guessing zero: {100 * -differences.mean() / np.mean(y ** 2):.4f}%")
+print(f"MSE reduction vs guessing zero: {100 * -differences.mean() / np.mean(y_result ** 2):.4f}%")
 print(f"95% bootstrap interval: [{low:.3e}, {high:.3e}]")
